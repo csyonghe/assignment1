@@ -2,24 +2,36 @@
 #include <algorithm>
 
 #include "CycleTimer.h"
-#include "saxpy_ispc.h"
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 
 extern void saxpySerial(int N, float a, float* X, float* Y, float* result);
 
-
+#ifdef USE_ISPC_OBJ
+extern "C"
+{
+	void saxpy_ispc(int N, float a, float* X, float* Y, float* result);
+	void saxpy_ispc_withtasks(int N, float a, float* X, float* Y, float* result);
+}
+#else
+#include "saxpy_ispc.h"
+using namespace ispc;
+#endif
 // return GB/s
 static float
 toBW(int bytes, float sec) {
-    return static_cast<float>(bytes) / (1024. * 1024. * 1024.) / sec;
+    return static_cast<float>(bytes) / (1024.f * 1024.f * 1024.f) / sec;
 }
 
 static float
 toGFLOPS(int ops, float sec) {
-    return static_cast<float>(ops) / 1e9 / sec;
+    return static_cast<float>(ops) / 1e9f / sec;
 }
-
-using namespace ispc;
-
 
 int main() {
 
@@ -36,8 +48,8 @@ int main() {
     // initialize array values
     for (unsigned int i=0; i<N; i++)
     {
-        arrayX[i] = i;
-        arrayY[i] = i;
+        arrayX[i] = (float)i;
+        arrayY[i] = (float)i;
         result[i] = 0.f;
     }
 
@@ -75,8 +87,8 @@ int main() {
 
     printf("[saxpy ispc]:\t\t[%.3f] ms\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
            minISPC * 1000,
-           toBW(TOTAL_BYTES, minISPC),
-           toGFLOPS(TOTAL_FLOPS, minISPC));
+           toBW(TOTAL_BYTES, (float)minISPC),
+           toGFLOPS(TOTAL_FLOPS, (float)minISPC));
 
     // Clear out the buffer
     for (unsigned int i = 0; i < N; ++i)
@@ -95,8 +107,8 @@ int main() {
 
     printf("[saxpy task ispc]:\t[%.3f] ms\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
            minTaskISPC * 1000,
-           toBW(TOTAL_BYTES, minTaskISPC),
-           toGFLOPS(TOTAL_FLOPS, minTaskISPC));
+           toBW(TOTAL_BYTES, (float)minTaskISPC),
+           toGFLOPS(TOTAL_FLOPS, (float)minTaskISPC));
 
     printf("\t\t\t\t(%.2fx speedup from use of tasks)\n", minISPC/minTaskISPC);
     //printf("\t\t\t\t(%.2fx speedup from ISPC)\n", minSerial/minISPC);

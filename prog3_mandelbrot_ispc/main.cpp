@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include <algorithm>
-#include <getopt.h>
-
 #include "CycleTimer.h"
-#include "mandelbrot_ispc.h"
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 
 extern void mandelbrotSerial(
     float x0, float y0, float x1, float y1,
@@ -11,7 +15,25 @@ extern void mandelbrotSerial(
     int startRow, int numRows,
     int maxIterations,
     int output[]);
+#ifdef USE_ISPC_OBJ
+extern "C"
+{
+	void mandelbrot_ispc(float x0, float y0,
+		float x1, float y1,
+		int width, int height,
+		int maxIterations,
+		int *output);
 
+	void mandelbrot_ispc_withtasks(float x0, float y0,
+		float x1, float y1,
+		int width, int height,
+		int maxIterations,
+		int *output);
+}
+#else
+#include "mandelbrot_ispc.h"
+using namespace ispc;
+#endif
 extern void mandelbrotThread(
     int numThreads,
     float x0, float y0, float x1, float y1,
@@ -58,8 +80,6 @@ scaleAndShift(float& x0, float& x1, float& y0, float& y1,
 
 }
 
-using namespace ispc;
-
 void usage(const char* progname) {
     printf("Usage: %s [options]\n", progname);
     printf("Program Options:\n");
@@ -83,41 +103,39 @@ int main(int argc, char** argv) {
     bool useTasks = false;
 
     // parse commandline options ////////////////////////////////////////////
-    int opt;
-    static struct option long_options[] = {
-        {"tasks", 0, 0, 't'},
-        {"view",  1, 0, 'v'},
-        {"help",  0, 0, '?'},
-        {0 ,0, 0, 0}
-    };
 
-    while ((opt = getopt_long(argc, argv, "tv:?", long_options, NULL)) != EOF) {
-
-        switch (opt) {
-        case 't':
-            useTasks = true;
-            break;
-        case 'v':
-        {
-            int viewIndex = atoi(optarg);
-            // change view settings
-            if (viewIndex == 2) {
-                float scaleValue = .015f;
-                float shiftX = -.986f;
-                float shiftY = .30f;
-                scaleAndShift(x0, x1, y0, y1, scaleValue, shiftX, shiftY);
-            } else if (viewIndex > 1) {
-                fprintf(stderr, "Invalid view index\n");
-                return 1;
-            }
-            break;
-        }
-        case '?':
-        default:
-            usage(argv[0]);
-            return 1;
-        }
-    }
+	for (int i = 1; i < argc; i++) {
+		if (i < argc - 1)
+		{
+			if (stricmp(argv[i], "-v") == 0)
+			{
+				int viewIndex = atoi(argv[i + 1]);
+				// change view settings
+				if (viewIndex == 2) {
+					float scaleValue = .015f;
+					float shiftX = -.986f;
+					float shiftY = .30f;
+					scaleAndShift(x0, x1, y0, y1, scaleValue, shiftX, shiftY);
+				}
+				else if (viewIndex > 1) {
+					fprintf(stderr, "Invalid view index\n");
+					return 1;
+				}
+			}
+		}
+		else
+		{
+			if (stricmp(argv[i], "-t") == 0)
+			{
+				useTasks = true;
+			}
+			else if (stricmp(argv[i], "help") == 0 || stricmp(argv[i], "?") == 0)
+			{
+				usage(argv[0]);
+				return 1;
+			}
+		}
+	}
     // end parsing of commandline options
 
     int *output_serial = new int[width*height];

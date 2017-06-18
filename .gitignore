@@ -6,6 +6,7 @@
 *.lo
 *.o
 *.obj
+.vs/
 objs/
 
 # Precompiled Headers

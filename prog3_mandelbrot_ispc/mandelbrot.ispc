@@ -25,14 +25,13 @@ export void mandelbrot_ispc(uniform float x0, uniform float y0,
 {
     float dx = (x1 - x0) / width;
     float dy = (y1 - y0) / height;
-
-    foreach (j = 0 ... height, i = 0 ... width) {
+	foreach (j = 0 ... height, i = 0 ... width) {
             float x = x0 + i * dx;
             float y = y0 + j * dy;
 
             int index = j * width + i;
             output[index] = mandel(x, y, maxIterations);
-    }
+	}
 }
 
 // slightly different kernel to support tasking

@@ -1,14 +1,30 @@
 #include <stdio.h>
 #include <algorithm>
-#include <pthread.h>
 #include <math.h>
 
 #include "CycleTimer.h"
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
+extern void sqrtSerial(int N,
+	float initialGuess,
+	float values[],
+	float output[]);
+#ifdef USE_ISPC_OBJ
+extern "C"
+{
+	void sqrt_ispc(int N, float startGuess, float* values, float* output);
+	void sqrt_ispc_withtasks(int N, float startGuess, float* values, float* output);
+}
+#else
 #include "sqrt_ispc.h"
-
 using namespace ispc;
-
-extern void sqrtSerial(int N, float startGuess, float* values, float* output);
+#endif
 
 static void verifyResult(int N, float* result, float* gold) {
     for (int i=0; i<N; i++) {

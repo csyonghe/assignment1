@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <algorithm>
-#include <getopt.h>
 #include <math.h>
 #include "CMU418intrin.h"
 #include "logger.h"
@@ -25,34 +24,32 @@ int main(int argc, char * argv[]) {
   bool printLog = false;
 
   // parse commandline options ////////////////////////////////////////////
-  int opt;
-  static struct option long_options[] = {
-    {"size", 1, 0, 's'},
-    {"log", 0, 0, 'l'},
-    {"help", 0, 0, '?'},
-    {0 ,0, 0, 0}
-  };
 
-  while ((opt = getopt_long(argc, argv, "s:l?", long_options, NULL)) != EOF) {
-
-    switch (opt) {
-      case 's':
-        N = atoi(optarg);
-        if (N <= 0) {
-          printf("Error: Workload size is set to %d (<0).\n", N);
-          return -1;
-        }
-        break;
-      case 'l':
-        printLog = true;
-        break;
-      case '?':
-      default:
-        usage(argv[0]);
-        return 1;
-    }
+  for (int i = 1; i < argc; i++) {
+	  if (i < argc - 1)
+	  {
+		  if (stricmp(argv[i], "-size") == 0 || stricmp(argv[i], "-s") == 0)
+		  {
+			  N = atoi(argv[i + 1]);
+			  if (N <= 0) {
+				  printf("Error: Workload size is set to %d (<0).\n", N);
+				  return -1;
+			  }
+		  }
+	  }
+	  else
+	  {
+		  if (stricmp(argv[i], "help") == 0 || stricmp(argv[i], "?") == 0)
+		  {
+			  usage(argv[0]);
+			  return 1;
+		  }
+		  else if (stricmp(argv[i], "-log") == 0 || stricmp(argv[i], "-l") == 0)
+		  {
+			  printLog = true;
+		  }
+	  }
   }
-
 
   float* values = new float[N+VECTOR_WIDTH];
   int* exponents = new int[N+VECTOR_WIDTH];
@@ -66,7 +63,7 @@ int main(int argc, char * argv[]) {
   //absSerial(values, gold, N);
   //absVector(values, output, N);
 
-  printf("\e[1;31mCLAMPED EXPONENT\e[0m (required) \n");
+  printf("CLAMPED EXPONENT (required) \n");
   bool clampedCorrect = verifyResult(values, exponents, output, gold, N);
   if (printLog) CMU418Logger.printLog();
   CMU418Logger.printStats();
@@ -78,11 +75,11 @@ int main(int argc, char * argv[]) {
     printf("Passed!!!\n");
   }
 
-  printf("\n\e[1;31mARRAY SUM\e[0m (bonus) \n");
+  printf("\nARRAY SUM (bonus) \n");
   if (N % VECTOR_WIDTH == 0) {
     float sumGold = arraySumSerial(values, N);
     float sumOutput = arraySumVector(values, N);
-    float epsilon = 0.1;
+    float epsilon = 0.1f;
     bool sumCorrect = abs(sumGold - sumOutput) < epsilon * 2;
     if (!sumCorrect) {
       printf("Expected %f, got %f\n.", sumGold, sumOutput);
@@ -91,7 +88,7 @@ int main(int argc, char * argv[]) {
       printf("Passed!!!\n");
     }
   } else {
-    printf("Must have N % VECTOR_WIDTH == 0 for this problem (VECTOR_WIDTH is %d)\n", VECTOR_WIDTH);
+    printf("Must have N %% VECTOR_WIDTH == 0 for this problem (VECTOR_WIDTH is %d)\n", VECTOR_WIDTH);
   }
 
   delete[] values;
@@ -125,7 +122,7 @@ void initValue(float* values, int* exponents, float* output, float* gold, unsign
 
 bool verifyResult(float* values, int* exponents, float* output, float* gold, int N) {
   int incorrect = -1;
-  float epsilon = 0.00001;
+  float epsilon = 0.00001f;
   for (int i=0; i<N+VECTOR_WIDTH; i++) {
     if ( abs(output[i] - gold[i]) > epsilon ) {
       incorrect = i;
@@ -238,9 +235,40 @@ void clampedExpSerial(float* values, int* exponents, float* output, int N) {
 
 void clampedExpVector(float* values, int* exponents, float* output, int N) {
   // TODO: Implement your vectorized version of clampedExpSerial here
-
+	auto zeros = _cmu418_vset_int(0);
+	auto ones = _cmu418_vset_int(1);
+	auto  clamp = _cmu418_vset_float(9.999999f);
+	auto onesMask = _cmu418_init_ones(VECTOR_WIDTH);
   for (int i=0; i<N; i+=VECTOR_WIDTH) {
+	  auto rs_y_eq_0 = onesMask;
+	  __cmu418_vec<int> y;
+	  _cmu418_vload_int(y, exponents + i, onesMask);
+	  __cmu418_mask mask_y_eq_0;
+	  _cmu418_veq_int(mask_y_eq_0, y, zeros, onesMask);
+	  auto mask_y_neq_0 = _cmu418_mask_not(mask_y_eq_0);
+	  auto mask_y_neq_00 = mask_y_neq_0;
+	  __cmu418_vec<float> x;
+	  _cmu418_vload_float(x, values + i, mask_y_neq_0);
 
+	  __cmu418_vec<float> rs_y_neq_0 = x;
+	  __cmu418_mask mask_y_gt_0;
+  loophead:;
+	  _cmu418_vgt_int(mask_y_gt_0, y, ones, mask_y_neq_0);
+	  mask_y_neq_0 = _cmu418_mask_and(mask_y_neq_0, mask_y_gt_0);
+	  if (_cmu418_cntbits(mask_y_neq_0))
+	  {
+		  _cmu418_vmult_float(rs_y_neq_0, rs_y_neq_0, x, mask_y_neq_0);
+		  _cmu418_vsub_int(y, y, ones, mask_y_neq_0);
+		  goto loophead;
+	  }
+
+	  __cmu418_mask mask_clamp;
+	  _cmu418_vgt_float(mask_clamp, rs_y_neq_0, clamp, mask_y_neq_00);
+	  _cmu418_vmove_float(rs_y_neq_0, clamp, mask_clamp);
+
+	  __cmu418_vec<float> rs = _cmu418_vset_float(1.0f);
+	  _cmu418_vmove_float(rs, rs_y_neq_0, mask_y_neq_00);
+	  _cmu418_vstore_float(output + i, rs, onesMask);
   }
 
 }
